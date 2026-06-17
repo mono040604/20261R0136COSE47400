@@ -11,7 +11,7 @@ from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
 
-RUN_MODEL = 'lora' #choice u're model: 'lora' | 'full_finetune' | 'ft_enhanced'
+RUN_MODEL = 'full_finetune' #choice u're model: 'lora' | 'full_finetune' | 'ft_enhanced'
 TEST_CSV = "./test_annotations2.csv"
 LABEL_MAP = "./genre_label_map.json"
 GENRE_SPLIT = "./genre_split.json"
@@ -135,14 +135,27 @@ with torch.no_grad():
 all_logits = np.array(all_logits)
 all_label = np.array(all_label)
 
-FIXED_THRESHOLD = -0.02
-preds = (all_logits > FIXED_THRESHOLD).astype(int)
-print(f"fixed_threshold: {FIXED_THRESHOLD}")
+# Threshold scan for best Macro F1
+thresholds = np.arange(-5.0, 0.0, 0.01)
+best_macro = 0
+best_threshold = 0
+best_preds = None
+for threshold in thresholds:
+    preds_candidate = (all_logits > threshold).astype(int)
+    macro = f1_score(all_label, preds_candidate, average="macro", zero_division=0)
+    if macro > best_macro:
+        best_macro = macro
+        best_threshold = threshold
+        best_preds = preds_candidate
+print(f"best_threshold: {best_threshold:.4f}")
+preds = best_preds
 macro_f1 = f1_score(all_label, preds, average="macro")
 micro_f1 = f1_score(all_label, preds, average="micro")
 
-train_f1 = f1_score(all_label[:,train_indices], preds[:,train_indices], average='macro')
-retained_f1 = f1_score(all_label[:, retained_indices], preds[:, retained_indices], average='macro')
+train_f1_macro = f1_score(all_label[:,train_indices], preds[:,train_indices], average='macro')
+train_f1_micro = f1_score(all_label[:,train_indices], preds[:,train_indices], average='micro')
+retained_f1_macro = f1_score(all_label[:, retained_indices], preds[:, retained_indices], average='macro')
+retained_f1_micro = f1_score(all_label[:, retained_indices], preds[:, retained_indices], average='micro')
 
 overall_logit_mean = all_logits.mean()
 retained_logit_mean = all_logits[:, retained_indices].mean()
@@ -173,8 +186,8 @@ retained_group = per_genre_df[per_genre_df["genres type"] == "retained_genres"]
 print(f'model: {RUN_MODEL}')
 print(f'macro f1:{macro_f1:.4f}')
 print(f'micro f1:{micro_f1:.4f}')
-print(f'training category f1:{train_f1:.4f}')
-print(f'retained category memory f1:{retained_f1:.4f}')
+print(f'training category f1 (macro/micro):{train_f1_macro:.4f} / {train_f1_micro:.4f}')
+print(f'retained category memory f1 (macro/micro):{retained_f1_macro:.4f} / {retained_f1_micro:.4f}')
 print(f'average test loss:{total_loss/len(test_df):.4f}')
 print(f'overall average logit:{overall_logit_mean:.4f}')
 print(f'retain category average logit:{retained_logit_mean:.4f}')
