@@ -145,46 +145,10 @@ class_weight_raw = torch.tensor(
 )
 class_weight = torch.sqrt(class_weight_raw).clamp(min=1.0).to(device)
 print(f"Class weight range: [{class_weight.min():.2f}, {class_weight.max():.2f}]")
-class FocalLoss(torch.nn.Module):
-    """Focal Loss for multi-label classification.
-
-    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
-
-    Args:
-        alpha: Class balancing weight, shape (num_classes,) or scalar.
-        gamma: Focusing parameter. gamma=0 means standard BCE loss.
-        reduction: 'none' | 'mean' | 'sum' (default: 'none')
-    """
-    def __init__(self, alpha=None, gamma=2.0, reduction='none'):
-        super().__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-
-    def forward(self, logits, targets):
-        bce_loss = torch.nn.functional.binary_cross_entropy_with_logits(
-            logits, targets, reduction='none'
-        )
-        probs = torch.sigmoid(logits)
-        p_t = targets * probs + (1 - targets) * (1 - probs)
-        focal_weight = (1 - p_t) ** self.gamma
-        loss = focal_weight * bce_loss
-
-        if self.alpha is not None:
-            # FIXED: only weight positive samples; negatives keep weight=1.0
-            alpha_t = targets * self.alpha + (1 - targets) * 1.0
-            loss = alpha_t * loss
-
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        return loss
-
-# Use fixed gamma for full training
-GAMMA = 2.0
-loss_fn = FocalLoss(alpha=class_weight, gamma=GAMMA, reduction='none')
-print(f"Using Focal Loss (gamma={GAMMA}) with class weights")
+# BCEWithLogitsLoss — 与 preprocessing_bce.py 完全相同的损失函数
+# pos_weight 仅加权正样本，负样本权重恒为 1.0
+loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=class_weight, reduction='none')
+print(f"Using BCEWithLogitsLoss with pos_weight")
 
 best_loss = float("inf")
 best_model_path = os.path.join(SAVE_MODLE_PATH, "model_best_ft.pt")
